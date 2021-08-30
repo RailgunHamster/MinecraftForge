@@ -1,0 +1,4 @@
+gradle -q javaToolchains
+
+org.gradle.debug = true
+// port 5005
