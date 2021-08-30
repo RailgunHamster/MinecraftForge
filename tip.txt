@@ -1,4 +1,5 @@
 gradle -q javaToolchains
 
-org.gradle.debug = true
 // port 5005
+org.gradle.debug = true
+.\gradlew forge_test_client --debug-jvm

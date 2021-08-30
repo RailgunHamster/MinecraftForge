@@ -59,7 +59,7 @@
         <Logger level="${sys:forge.logging.mojang.level:-info}" name="net.minecraft"/>
         <Logger level="${sys:forge.logging.classtransformer.level:-info}" name="cpw.mods.modlauncher.ClassTransformer"/>
         <Root level="all">
-            <AppenderRef ref="Console" level="${sys:forge.logging.console.level:-info}"/>
+            <AppenderRef ref="Console" level="${sys:forge.logging.console.level:-debug}"/>
             <AppenderRef ref="ServerGuiConsole" level="${sys:forge.logging.console.level:-info}"/>
             <AppenderRef ref="File" level="${sys:forge.logging.file.level:-info}"/>
             <AppenderRef ref="DebugFile" level="${sys:forge.logging.debugFile.level:-debug}"/>
