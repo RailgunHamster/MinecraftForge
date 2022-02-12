@@ -27,12 +27,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.world.inventory.tooltip.TooltipComponent;
 import org.apache.commons.lang3.tuple.Pair;
 
 import com.google.common.cache.CacheBuilder;
@@ -51,9 +54,19 @@ import net.minecraftforge.client.textures.ITextureAtlasSpriteLoader;
 
 public class MinecraftForgeClient
 {
-    public static RenderType getRenderLayer()
+    public static RenderType getRenderType()
     {
-        return ForgeHooksClient.renderLayer.get();
+        return ForgeHooksClient.renderType.get();
+    }
+
+    private static float partialTick;
+
+    public static float getPartialTick() {
+        return partialTick;
+    }
+
+    public static void setPartialTick(float partialTick) {
+        MinecraftForgeClient.partialTick = partialTick;
     }
 
     /**
@@ -102,47 +115,6 @@ public class MinecraftForgeClient
         }
     }
 
-    private static final LoadingCache<Pair<Level, BlockPos>, Optional<RenderChunkRegion>> regionCache = CacheBuilder.newBuilder()
-        .maximumSize(500)
-        .concurrencyLevel(5)
-        .expireAfterAccess(1, TimeUnit.SECONDS)
-        .build(new CacheLoader<Pair<Level, BlockPos>, Optional<RenderChunkRegion>>()
-        {
-            @Override
-            public Optional<RenderChunkRegion> load(Pair<Level, BlockPos> key)
-            {
-                return Optional.ofNullable(RenderChunkRegion.createIfNotEmpty(key.getLeft(), key.getRight().offset(-1, -1, -1), key.getRight().offset(16, 16, 16), 1));
-            }
-        });
-
-    public static void onRebuildChunk(Level world, BlockPos position, RenderChunkRegion cache)
-    {
-        if (cache == null)
-            regionCache.invalidate(Pair.of(world, position));
-        else
-            regionCache.put(Pair.of(world, position), Optional.of(cache));
-    }
-
-    @Nullable
-    public static RenderChunkRegion getRegionRenderCache(Level world, BlockPos pos)
-    {
-        return getRegionRenderCacheOptional(world, pos).orElse(null);
-    }
-
-    public static Optional<RenderChunkRegion> getRegionRenderCacheOptional(Level world, BlockPos pos)
-    {
-        int x = pos.getX() & ~0xF;
-        int y = pos.getY() & ~0xF;
-        int z = pos.getZ() & ~0xF;
-        return regionCache.getUnchecked(Pair.of(world, new BlockPos(x, y, z)));
-    }
-
-    public static void clearRenderCache()
-    {
-        regionCache.invalidateAll();
-        regionCache.cleanUp();
-    }
-
     private static HashMap<ResourceLocation, Supplier<NativeImage>> bufferedImageSuppliers = new HashMap<ResourceLocation, Supplier<NativeImage>>();
     public static void registerImageLayerSupplier(ResourceLocation resourceLocation, Supplier<NativeImage> supplier)
     {
@@ -174,6 +146,26 @@ public class MinecraftForgeClient
     public static ITextureAtlasSpriteLoader getTextureAtlasSpriteLoader(ResourceLocation name)
     {
         return textureAtlasSpriteLoaders.get(name);
+    }
+
+    private static final Map<Class<? extends TooltipComponent>, Function<TooltipComponent, ClientTooltipComponent>> tooltipComponentFactories = new ConcurrentHashMap<>();
+
+    /**
+     * Register a factory for ClientTooltipComponents.
+     * @param cls the class for the component
+     * @param factory the factory for the ClientTooltipComponent
+     */
+    @SuppressWarnings("unchecked")
+    public static <T extends TooltipComponent> void registerTooltipComponentFactory(Class<T> cls, Function<? super T, ? extends ClientTooltipComponent> factory)
+    {
+        tooltipComponentFactories.put(cls, (Function<TooltipComponent, ClientTooltipComponent>) factory);
+    }
+
+    @Nullable
+    public static ClientTooltipComponent getClientTooltipComponent(TooltipComponent component)
+    {
+        var factory = tooltipComponentFactories.get(component.getClass());
+        return factory == null ? null : factory.apply(component);
     }
 
 }

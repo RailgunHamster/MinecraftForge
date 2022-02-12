@@ -1,6 +1,16 @@
 --- a/net/minecraft/advancements/Advancement.java
 +++ b/net/minecraft/advancements/Advancement.java
-@@ -311,6 +_,7 @@
+@@ -129,8 +_,8 @@
+       return this.f_138305_;
+    }
+ 
+-   public static class Builder {
+       @Nullable
++   public static class Builder implements net.minecraftforge.common.extensions.IForgeAdvancementBuilder {
+       private ResourceLocation f_138332_;
+       @Nullable
+       private Advancement f_138333_;
+@@ -321,6 +_,7 @@
        }
  
        public static Advancement.Builder m_138380_(JsonObject p_138381_, DeserializationContext p_138382_) {

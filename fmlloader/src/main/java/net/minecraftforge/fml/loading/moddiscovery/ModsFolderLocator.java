@@ -20,22 +20,19 @@
 package net.minecraftforge.fml.loading.moddiscovery;
 
 import net.minecraftforge.fml.loading.FMLPaths;
+import net.minecraftforge.fml.loading.LogMarkers;
 import net.minecraftforge.fml.loading.ModDirTransformerDiscoverer;
 import net.minecraftforge.fml.loading.StringUtils;
-import net.minecraftforge.forgespi.locating.IModFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static cpw.mods.modlauncher.api.LamdbaExceptionUtils.uncheck;
-import static net.minecraftforge.fml.loading.LogMarkers.SCAN;
 
 /**
  * Support loading mods located in JAR files in the mods folder
@@ -61,7 +58,7 @@ public class ModsFolderLocator extends AbstractJarFileLocator {
 
     @Override
     public Stream<Path> scanCandidates() {
-        LOGGER.debug(SCAN,"Scanning mods dir {} for mods", this.modFolder);
+        LOGGER.debug(LogMarkers.SCAN,"Scanning mods dir {} for mods", this.modFolder);
         var excluded = ModDirTransformerDiscoverer.allExcluded();
 
         return uncheck(()-> Files.list(this.modFolder))

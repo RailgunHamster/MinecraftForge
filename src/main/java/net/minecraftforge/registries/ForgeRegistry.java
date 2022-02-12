@@ -1,6 +1,6 @@
 /*
  * Minecraft Forge
- * Copyright (c) 2016-2021.
+ * Copyright (c) 2016-2022.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -19,24 +19,20 @@
 
 package net.minecraftforge.registries;
 
-import java.util.BitSet;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import com.mojang.datafixers.util.Pair;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.DynamicOps;
 import net.minecraftforge.common.util.LogMessageAdapter;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.util.ObfuscationReflectionHelper;
 import org.apache.commons.lang3.Validate;
-
-import java.util.Set;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ArrayListMultimap;
@@ -76,6 +72,7 @@ public class ForgeRegistry<V extends IForgeRegistryEntry<V>> implements IForgeRe
     private final Map<ResourceLocation, ResourceLocation> aliases = Maps.newHashMap();
     final Map<ResourceLocation, ?> slaves = Maps.newHashMap();
     private final ResourceLocation defaultKey;
+    private final ResourceKey<V> defaultResourceKey;
     private final CreateCallback<V> create;
     private final AddCallback<V> add;
     private final ClearCallback<V> clear;
@@ -86,7 +83,7 @@ public class ForgeRegistry<V extends IForgeRegistryEntry<V>> implements IForgeRe
     private final Set<ResourceLocation> dummies = Sets.newHashSet();
     private final Set<Integer> blocked = Sets.newHashSet();
     private final Multimap<ResourceLocation, V> overrides = ArrayListMultimap.create();
-    private final BiMap<OverrideOwner, V> owners = HashBiMap.create();
+    private final BiMap<OverrideOwner<V>, V> owners = HashBiMap.create();
     private final DummyFactory<V> dummyFactory;
     private final boolean isDelegated;
     private final int min;
@@ -103,6 +100,8 @@ public class ForgeRegistry<V extends IForgeRegistryEntry<V>> implements IForgeRe
     private final ResourceKey<Registry<V>> key;
     private final RegistryBuilder<V> builder;
 
+    private final Codec<V> codec = new RegistryCodec();
+
     ForgeRegistry(RegistryManager stage, ResourceLocation name, RegistryBuilder<V> builder)
     {
         this.name = name;
@@ -111,6 +110,7 @@ public class ForgeRegistry<V extends IForgeRegistryEntry<V>> implements IForgeRe
         this.stage = stage;
         this.superType = builder.getType();
         this.defaultKey = builder.getDefault();
+        this.defaultResourceKey = ResourceKey.create(key, defaultKey);
         this.min = builder.getMinId();
         this.max = builder.getMaxId();
         this.availabilityMap = new BitSet(Math.min(max + 1, 0x0FFF));
@@ -187,6 +187,12 @@ public class ForgeRegistry<V extends IForgeRegistryEntry<V>> implements IForgeRe
     }
 
     @Override
+    public Codec<V> getCodec()
+    {
+        return this.codec;
+    }
+
+    @Override
     public void registerAll(@SuppressWarnings("unchecked") V... values)
     {
         for (V value : values)
@@ -233,8 +239,14 @@ public class ForgeRegistry<V extends IForgeRegistryEntry<V>> implements IForgeRe
     @Override
     public ResourceLocation getKey(V value)
     {
-        ResourceLocation ret = this.names.inverse().get(value);
-        return ret == null ? this.defaultKey : ret;
+        return getResourceKey(value).map(ResourceKey::location).orElse(this.defaultKey);
+    }
+
+    @Override
+    public Optional<ResourceKey<V>> getResourceKey(V value)
+    {
+        // We use 'owners' here because we want to return the key for the inactive overridden items, not just the active set.
+        return Optional.ofNullable(this.owners.inverse().get(value)).map(OverrideOwner::key);
     }
 
     @Override
@@ -374,11 +386,12 @@ public class ForgeRegistry<V extends IForgeRegistryEntry<V>> implements IForgeRe
             this.defaultValue = value;
         }
 
+        ResourceKey<V> rkey = ResourceKey.create(this.key, key);
         this.names.put(key, value);
-        this.keys.put(ResourceKey.create(this.key, key), value);
+        this.keys.put(rkey, value);
         this.ids.put(idToUse, value);
         this.availabilityMap.set(idToUse);
-        this.owners.put(new OverrideOwner(owner == null ? key.getPath() : owner, key), value);
+        this.owners.put(new OverrideOwner<V>(owner == null ? key.getPath() : owner, rkey), value);
 
         if (isDelegated)
         {
@@ -574,7 +587,7 @@ public class ForgeRegistry<V extends IForgeRegistryEntry<V>> implements IForgeRe
                 overrides.add(entry.getValue());
                 for (V value : overrides)
                 {
-                    OverrideOwner owner = from.owners.inverse().get(value);
+                    OverrideOwner<V> owner = from.owners.inverse().get(value);
                     if (owner == null)
                     {
                         LOGGER.warn(REGISTRIES,"Registry {}: Override did not have an associated owner object. Name: {} Value: {}", this.name, entry.getKey(), value);
@@ -598,8 +611,6 @@ public class ForgeRegistry<V extends IForgeRegistryEntry<V>> implements IForgeRe
         if (errored)
             throw new RuntimeException("One of more entry values did not copy to the correct id. Check log for details!");
     }
-
-
 
     @Override
     public void clear()
@@ -663,7 +674,7 @@ public class ForgeRegistry<V extends IForgeRegistryEntry<V>> implements IForgeRe
 
     /**
      * Used to control the times where people can modify this registry.
-     * Users should only ever register things in the Register<?> events!
+     * Users should only ever register things in the {@literal Register<?>} events!
      */
     public void freeze()
     {
@@ -762,7 +773,7 @@ public class ForgeRegistry<V extends IForgeRegistryEntry<V>> implements IForgeRe
 
             for (V value : lst)
             {
-                OverrideOwner owner = old.owners.inverse().get(value);
+                OverrideOwner<V> owner = old.owners.inverse().get(value);
                 if (owner == null)
                 {
                     LOGGER.warn(REGISTRIES,"Registry {}: Override did not have an associated owner object. Name: {} Value: {}", this.name, entry.getKey(), value);
@@ -790,7 +801,7 @@ public class ForgeRegistry<V extends IForgeRegistryEntry<V>> implements IForgeRe
             String current = this.owners.inverse().get(this.getRaw(itemName)).owner;
             if (!owner.equals(current))
             {
-                V _new = this.owners.get(new OverrideOwner(owner, itemName));
+                V _new = this.owners.get(new OverrideOwner<V>(owner, ResourceKey.create(this.key, itemName)));
                 if (_new == null)
                 {
                     LOGGER.warn(REGISTRIES,"Registry {}: Skipping override for {}, Unknown owner {}", this.name, itemName, owner);
@@ -864,12 +875,51 @@ public class ForgeRegistry<V extends IForgeRegistryEntry<V>> implements IForgeRe
         for (ResourceLocation key : this.overrides.keySet())
         {
             V obj = this.names.get(key);
-            OverrideOwner owner = this.owners.inverse().get(obj);
+            OverrideOwner<V> owner = this.owners.inverse().get(obj);
             if (owner == null)
                 LOGGER.debug(REGISTRIES,"Registry {} {}: Invalid override {} {}", this.name, this.stage.getName(), key, obj);
             ret.put(key, owner.owner);
         }
         return ret;
+    }
+
+    private class RegistryCodec implements Codec<V>
+    {
+        @Override
+        public <T> DataResult<Pair<V, T>> decode(DynamicOps<T> ops, T input)
+        {
+            if (ops.compressMaps())
+            {
+                return ops.getNumberValue(input).flatMap(n ->
+                {
+                    int id = n.intValue();
+                    if (ids.get(id) == null)
+                    {
+                        return DataResult.error("Unknown registry id in " + ForgeRegistry.this.key + ": " + n);
+                    }
+                    V val = ForgeRegistry.this.getValue(id);
+                    return DataResult.success(val);
+                }).map(v -> Pair.of(v, ops.empty()));
+            }
+            else
+            {
+                return ResourceLocation.CODEC.decode(ops, input).flatMap(keyValuePair -> !ForgeRegistry.this.containsKey(keyValuePair.getFirst())
+                        ? DataResult.error("Unknown registry key in " + ForgeRegistry.this.key + ": " + keyValuePair.getFirst())
+                        : DataResult.success(keyValuePair.mapFirst(ForgeRegistry.this::getValue)));
+            }
+        }
+
+        @Override
+        public <T> DataResult<T> encode(V input, DynamicOps<T> ops, T prefix)
+        {
+            ResourceLocation key = getKey(input);
+            if (key == null)
+            {
+                return DataResult.error("Unknown registry element in " + ForgeRegistry.this.key + ": " + input);
+            }
+            T toMerge = ops.compressMaps() ? ops.createInt(getID(input)) : ops.createString(key.toString());
+            return ops.mergeToPrimitive(prefix, toMerge);
+        }
     }
 
     public static class Snapshot
@@ -1104,31 +1154,5 @@ public class ForgeRegistry<V extends IForgeRegistryEntry<V>> implements IForgeRe
             LOGGER.debug(REGISTRIES,"There were {} missing mappings that have been ignored", ignored);
     }
 
-    private static class OverrideOwner
-    {
-        final String owner;
-        final ResourceLocation key;
-        private OverrideOwner(String owner, ResourceLocation key)
-        {
-            this.owner = owner;
-            this.key = key;
-        }
-
-        public boolean equals(Object o)
-        {
-            if (this == o)
-                return true;
-
-            if (!(o instanceof OverrideOwner))
-                return false;
-
-            OverrideOwner oo = (OverrideOwner)o;
-            return this.owner.equals(oo.owner) && this.key.equals(oo.key);
-        }
-
-        public int hashCode()
-        {
-            return 31 * this.key.hashCode() + this.owner.hashCode();
-        }
-    }
+    private record OverrideOwner<V>(String owner, ResourceKey<V> key){};
 }

@@ -1,21 +1,18 @@
 package net.minecraftforge.fml.loading.moddiscovery;
 
-import cpw.mods.jarhandling.SecureJar;
 import cpw.mods.modlauncher.api.IModuleLayerManager;
 import cpw.mods.modlauncher.api.ITransformationService;
-import net.minecraftforge.fml.loading.*;
+import net.minecraftforge.fml.loading.EarlyLoadingException;
+import net.minecraftforge.fml.loading.LoadingModList;
+import net.minecraftforge.fml.loading.LogMarkers;
+import net.minecraftforge.fml.loading.ModSorter;
 import net.minecraftforge.fml.loading.progress.StartupMessageManager;
 import net.minecraftforge.forgespi.locating.IModFile;
-import net.minecraftforge.forgespi.locating.ModFileFactory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
-import static net.minecraftforge.fml.loading.LogMarkers.SCAN;
 
 public class ModValidator {
     private static final Logger LOGGER = LogManager.getLogger();
@@ -27,14 +24,19 @@ public class ModValidator {
 
     public ModValidator(final Map<IModFile.Type, List<ModFile>> modFiles) {
         this.modFiles = modFiles;
-        this.candidateMods = new ArrayList<>(modFiles.getOrDefault(IModFile.Type.MOD, List.of()));
-        this.candidatePlugins = new ArrayList<>(modFiles.getOrDefault(IModFile.Type.LANGPROVIDER, List.of()));
-        this.candidatePlugins.addAll(modFiles.getOrDefault(IModFile.Type.LIBRARY, List.of()));
+        this.candidateMods = lst(modFiles.get(IModFile.Type.MOD));
+        this.candidateMods.addAll(lst(modFiles.get(IModFile.Type.GAMELIBRARY)));
+        this.candidatePlugins = lst(modFiles.get(IModFile.Type.LANGPROVIDER));
+        this.candidatePlugins.addAll(lst(modFiles.get(IModFile.Type.LIBRARY)));
+    }
+
+    private static List<ModFile> lst(List<ModFile> files) {
+        return files == null ? new ArrayList<>() : new ArrayList<>(files);
     }
 
     public void stage1Validation() {
         brokenFiles = validateFiles(candidateMods);
-        LOGGER.debug(SCAN,"Found {} mod files with {} mods", candidateMods::size, ()-> candidateMods.stream().mapToInt(mf -> mf.getModInfos().size()).sum());
+        LOGGER.debug(LogMarkers.SCAN,"Found {} mod files with {} mods", candidateMods::size, ()-> candidateMods.stream().mapToInt(mf -> mf.getModInfos().size()).sum());
         StartupMessageManager.modLoaderConsumer().ifPresent(c->c.accept("Found "+ candidateMods.size()+" modfiles to load"));
     }
 
@@ -45,7 +47,7 @@ public class ModValidator {
         {
             ModFile mod = iterator.next();
             if (!mod.getLocator().isValid(mod) || !mod.identifyMods()) {
-                LOGGER.warn(SCAN, "File {} has been ignored - it is invalid", mod.getFilePath());
+                LOGGER.warn(LogMarkers.SCAN, "File {} has been ignored - it is invalid", mod.getFilePath());
                 iterator.remove();
                 brokenFiles.add(mod);
             }

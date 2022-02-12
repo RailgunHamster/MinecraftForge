@@ -28,6 +28,8 @@ import org.apache.logging.log4j.LogManager;
 
 import net.minecraftforge.common.ForgeConfigSpec.BooleanValue;
 import net.minecraftforge.common.ForgeConfigSpec.DoubleValue;
+import net.minecraftforge.common.ForgeConfigSpec.ConfigValue;
+
 
 public class ForgeConfig {
     public static class Server {
@@ -41,6 +43,8 @@ public class ForgeConfig {
         public final BooleanValue treatEmptyTagsAsAir;
 
         public final BooleanValue fixAdvancementLoading;
+
+        public final ConfigValue<String> permissionHandler;
 
         Server(ForgeConfigSpec.Builder builder) {
             builder.comment("Server configuration settings")
@@ -80,6 +84,11 @@ public class ForgeConfig {
                     .translation("forge.configgui.fixAdvancementLoading")
                     .define("fixAdvancementLoading", true);
 
+            permissionHandler = builder
+                    .comment("")
+                    .translation("forge.configgui.permissionHandler")
+                    .define("permissionHandler", "forge:default_handler");
+
             builder.pop();
         }
     }
@@ -113,8 +122,6 @@ public class ForgeConfig {
 
         public final BooleanValue experimentalForgeLightPipelineEnabled;
 
-        public final BooleanValue selectiveResourceReloadEnabled;
-
         public final BooleanValue showLoadWarnings;
 
         public final BooleanValue useCombinedDepthStencilAttachment;
@@ -136,11 +143,6 @@ public class ForgeConfig {
                 .comment("EXPERIMENTAL: Enable the Forge block rendering pipeline - fixes the lighting of custom models.")
                 .translation("forge.configgui.forgeLightPipelineEnabled")
                 .define("experimentalForgeLightPipelineEnabled", false);
-
-            selectiveResourceReloadEnabled = builder
-                .comment("When enabled, makes specific reload tasks such as language changing quicker to run.")
-                .translation("forge.configgui.selectiveResourceReloadEnabled")
-                .define("selectiveResourceReloadEnabled", true);
 
             showLoadWarnings = builder
                 .comment("When enabled, Forge will show any warnings that occurred during loading.")

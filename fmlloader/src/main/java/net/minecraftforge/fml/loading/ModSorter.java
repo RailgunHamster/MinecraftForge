@@ -32,7 +32,6 @@ import net.minecraftforge.fml.loading.toposort.TopologicalSort;
 import net.minecraftforge.forgespi.locating.IModFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.util.StringBuilderFormattable;
 import org.apache.maven.artifact.versioning.ArtifactVersion;
 import org.apache.maven.artifact.versioning.DefaultArtifactVersion;
 
@@ -92,6 +91,7 @@ public class ModSorter
         AtomicInteger counter = new AtomicInteger();
         Map<IModFileInfo, Integer> infos = modFiles.stream()
                 .map(ModFile::getModFileInfo)
+                .filter(ModFileInfo.class::isInstance)
                 .collect(toMap(Function.identity(), e -> counter.incrementAndGet()));
         infos.keySet().forEach(i -> graph.addNode((ModFileInfo) i));
         modFiles.stream()
@@ -150,9 +150,9 @@ public class ModSorter
 
     private void buildUniqueList()
     {
-        // Collect mod files by first modid in the file. This will be used for deduping purposes
+        // Collect mod files by module name. This will be used for deduping purposes
         final Map<String, List<IModFile>> modFilesByFirstId = modFiles.stream()
-                .collect(groupingBy(mf -> mf.getModInfos().get(0).getModId()));
+                .collect(groupingBy(mf -> mf.getModFileInfo().moduleName()));
 
         // Capture forge and MC here, so we can keep them for later
         forgeAndMC = new ArrayList<>();
@@ -161,6 +161,10 @@ public class ModSorter
             forgeAndMC.add((ModFile) mc.get(0));
         else
             throw new IllegalStateException("Failed to find minecraft somehow?");
+        // TODO: remove this hardcoding and make it more flexible
+        var forge = modFilesByFirstId.get("forge");
+        if (forge != null && !forge.isEmpty())
+            forgeAndMC.add((ModFile) forge.get(0)); // Silently ignore if Forge isn't present
 
         // Select the newest by artifact version sorting of non-unique files thus identified
         this.modFiles = modFilesByFirstId.entrySet().stream()
@@ -230,6 +234,13 @@ public class ModSorter
         LOGGER.debug(LOADING, "Found {} mod requirements missing ({} mandatory, {} optional)", missingVersions.size(), mandatoryMissing, missingVersions.size() - mandatoryMissing);
 
         if (!missingVersions.isEmpty()) {
+            if (mandatoryMissing > 0) {
+                LOGGER.error(LOADING, "Missing mandatory dependencies: {}", missingVersions.stream().filter(IModInfo.ModVersion::isMandatory).map(IModInfo.ModVersion::getModId).collect(Collectors.joining(", ")));
+            }
+            if (missingVersions.size() - mandatoryMissing > 0) {
+                LOGGER.error(LOADING, "Unsupported installed optional dependencies: {}", missingVersions.stream().filter(ver -> !ver.isMandatory()).map(IModInfo.ModVersion::getModId).collect(Collectors.joining(", ")));
+            }
+
             return missingVersions.stream()
                     .map(mv -> new ExceptionData(mv.isMandatory() ? "fml.modloading.missingdependency" : "fml.modloading.missingdependency.optional",
                             mv.getOwner(), mv.getModId(), mv.getOwner().getModId(), mv.getVersionRange(),

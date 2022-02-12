@@ -12,10 +12,8 @@
               "type": "minecraft:item",
               "conditions": [
                 {
-                  "condition": "minecraft:match_tool",
-                  "predicate": {
-                    "tag": "forge:shears"
-                  }
+                  "condition": "forge:can_tool_perform_action",
+                  "action": "shears_dig"
                 }
               ],
               "functions": [
@@ -65,8 +63,7 @@
           },
           "offsetY": 1
         }
-      ],
-      "functions": []
+      ]
     },
     {
       "rolls": 1.0,
@@ -79,10 +76,8 @@
               "type": "minecraft:item",
               "conditions": [
                 {
-                  "condition": "minecraft:match_tool",
-                  "predicate": {
-                    "tag": "forge:shears"
-                  }
+                  "condition": "forge:can_tool_perform_action",
+                  "action": "shears_dig"
                 }
               ],
               "functions": [
@@ -132,8 +127,7 @@
           },
           "offsetY": -1
         }
-      ],
-      "functions": []
+      ]
     }
   ]
 }

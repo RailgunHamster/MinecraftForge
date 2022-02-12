@@ -17,12 +17,22 @@
     }
  
     public void m_6742_(LivingEntity p_19467_, int p_19468_) {
-@@ -179,4 +_,28 @@
+@@ -179,4 +_,39 @@
     public boolean m_19486_() {
        return this.f_19447_ == MobEffectCategory.BENEFICIAL;
     }
 +
 +   // FORGE START
++   private final net.minecraftforge.common.util.ReverseTagWrapper<MobEffect> reverseTags = new net.minecraftforge.common.util.ReverseTagWrapper<>(this, () -> net.minecraft.tags.SerializationTags.m_13199_().m_144452_(Registry.f_122900_));
++
++   public java.util.Set<net.minecraft.resources.ResourceLocation> getTags() {
++      return reverseTags.getTagNames();
++   }
++
++   public boolean is(net.minecraft.tags.Tag<MobEffect> tag) {
++      return tag.m_8110_(this);
++   }
++
 +   private Object effectRenderer;
 +
 +   /*
@@ -34,7 +44,8 @@
 +   }
 +
 +   private void initClient() {
-+      if (net.minecraftforge.fml.loading.FMLEnvironment.dist == net.minecraftforge.api.distmarker.Dist.CLIENT) {
++      // Minecraft instance isn't available in datagen, so don't call initializeClient if in datagen
++      if (net.minecraftforge.fml.loading.FMLEnvironment.dist == net.minecraftforge.api.distmarker.Dist.CLIENT && !net.minecraftforge.fml.loading.FMLLoader.getLaunchHandler().isData()) {
 +         initializeClient(properties -> {
 +            this.effectRenderer = properties;
 +         });

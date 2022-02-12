@@ -21,11 +21,17 @@ package net.minecraftforge.common.extensions;
 
 import javax.annotation.Nonnull;
 
+import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
+import net.minecraft.client.resources.model.BakedModel;
+import net.minecraft.network.Connection;
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -48,9 +54,7 @@ public interface IForgeBlockEntity extends ICapabilitySerializable<CompoundTag>
     @Override
     default CompoundTag serializeNBT()
     {
-        CompoundTag ret = new CompoundTag();
-        self().save(ret);
-        return ret;
+        return self().saveWithFullMetadata();
     }
 
     /**
@@ -62,14 +66,20 @@ public interface IForgeBlockEntity extends ICapabilitySerializable<CompoundTag>
      * @param net The NetworkManager the packet originated from
      * @param pkt The data packet
      */
-    default void onDataPacket(net.minecraft.network.Connection net, net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket pkt){ }
+    default void onDataPacket(Connection net, ClientboundBlockEntityDataPacket pkt)
+    {
+        CompoundTag compoundtag = pkt.getTag();
+        if (compoundtag != null) {
+            self().load(compoundtag);
+        }
+    }
 
     /**
-     * Called when the chunk's TE update tag, gotten from {@link #getUpdateTag()}, is received on the client.
+     * Called when the chunk's TE update tag, gotten from {@link BlockEntity#getUpdateTag()}, is received on the client.
      * <p>
-     * Used to handle this tag in a special way. By default this simply calls {@link #readFromNBT(NBTTagCompound)}.
+     * Used to handle this tag in a special way. By default this simply calls {@link BlockEntity#load(CompoundTag)}.
      *
-     * @param tag The {@link NBTTagCompound} sent from {@link #getUpdateTag()}
+     * @param tag The {@link CompoundTag} sent from {@link BlockEntity#getUpdateTag()}
      */
      default void handleUpdateTag(CompoundTag tag)
      {
@@ -77,7 +87,7 @@ public interface IForgeBlockEntity extends ICapabilitySerializable<CompoundTag>
      }
 
     /**
-     * Gets a {@link NBTTagCompound} that can be used to store custom data for this tile entity.
+     * Gets a {@link CompoundTag} that can be used to store custom data for this tile entity.
      * It will be written, and read from disc, so it persists over world saves.
      *
      * @return A compound tag for custom data
@@ -87,7 +97,8 @@ public interface IForgeBlockEntity extends ICapabilitySerializable<CompoundTag>
      default void onChunkUnloaded(){}
 
     /**
-     * Called when this is first added to the world (by {@link World#addTileEntity(TileEntity)}).
+     * Called when this is first added to the world (by {@link LevelChunk#addAndRegisterBlockEntity(BlockEntity)})
+     * or right before the first tick when the chunk is generated or loaded from disk.
      * Override instead of adding {@code if (firstTick)} stuff in update.
      */
      default void onLoad()
@@ -96,16 +107,16 @@ public interface IForgeBlockEntity extends ICapabilitySerializable<CompoundTag>
      }
 
      /**
-      * Sometimes default render bounding box: infinite in scope. Used to control rendering on {@link TileEntitySpecialRenderer}.
+      * Sometimes default render bounding box: infinite in scope. Used to control rendering on {@link BlockEntityWithoutLevelRenderer}.
       */
      public static final AABB INFINITE_EXTENT_AABB = new net.minecraft.world.phys.AABB(Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
 
      /**
-      * Return an {@link AxisAlignedBB} that controls the visible scope of a {@link TileEntitySpecialRenderer} associated with this {@link TileEntity}
-      * Defaults to the collision bounding box {@link Block#getCollisionBoundingBoxFromPool(World, int, int, int)} associated with the block
+      * Return an {@link AABB} that controls the visible scope of a {@link BlockEntityWithoutLevelRenderer} associated with this {@link BlockEntity}
+      * Defaults to the collision bounding box {@link BlockState#getCollisionShape(BlockGetter, BlockPos)} associated with the block
       * at this location.
       *
-      * @return an appropriately size {@link AxisAlignedBB} for the {@link TileEntity}
+      * @return an appropriately size {@link AABB} for the {@link BlockEntity}
       */
      default AABB getRenderBoundingBox()
      {
@@ -167,7 +178,7 @@ public interface IForgeBlockEntity extends ICapabilitySerializable<CompoundTag>
 
     /**
      * Allows you to return additional model data.
-     * This data can be used to provide additional functionality in your {@link net.minecraft.client.renderer.model.IBakedModel}
+     * This data can be used to provide additional functionality in your {@link BakedModel}
      * You need to schedule a refresh of you model data via {@link #requestModelDataUpdate()} if the result of this function changes.
      * <b>Note that this method may be called on a chunk render thread instead of the main client thread</b>
      * @return Your model data

@@ -1,6 +1,6 @@
 /*
  * Minecraft Forge
- * Copyright (c) 2016-2021.
+ * Copyright (c) 2016-2022.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -21,10 +21,12 @@ package net.minecraftforge.registries;
 
 import java.util.Collection;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import com.mojang.serialization.Codec;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 
@@ -49,10 +51,13 @@ public interface IForgeRegistry<V extends IForgeRegistryEntry<V>> extends Iterab
     @Nullable V getValue(ResourceLocation key);
     @Nullable ResourceLocation getKey(V value);
     @Nullable ResourceLocation getDefaultKey();
+    @Nullable Optional<ResourceKey<V>> getResourceKey(V value);
 
     @Nonnull Set<ResourceLocation>         getKeys();
     @Nonnull Collection<V>                 getValues();
     @Nonnull Set<Entry<ResourceKey<V>, V>> getEntries();
+
+    @Nonnull Codec<V> getCodec();
 
     /**
      * Retrieve the slave map of type T from the registry.

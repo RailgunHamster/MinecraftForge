@@ -1,6 +1,6 @@
 /*
  * Minecraft Forge
- * Copyright (c) 2016-2021.
+ * Copyright (c) 2016-2022.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -19,9 +19,11 @@
 
 package net.minecraftforge.common;
 
+import com.google.common.collect.Multimap;
 import net.minecraft.commands.synchronization.EmptyArgumentSerializer;
 import net.minecraft.commands.synchronization.ArgumentTypes;
 import net.minecraft.commands.synchronization.ArgumentSerializer;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.RangedAttribute;
 import net.minecraft.world.item.crafting.Ingredient;
@@ -36,8 +38,10 @@ import net.minecraftforge.client.ForgeHooksClient;
 import net.minecraftforge.common.capabilities.RegisterCapabilitiesEvent;
 import net.minecraftforge.common.data.ExistingFileHelper;
 import net.minecraftforge.common.data.ForgeFluidTagsProvider;
+import net.minecraftforge.common.loot.CanToolPerformAction;
 import net.minecraftforge.common.loot.GlobalLootModifierSerializer;
 import net.minecraftforge.common.loot.LootTableIdCondition;
+import net.minecraftforge.common.util.MavenVersionStringHelper;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fluids.FluidAttributes;
@@ -45,20 +49,15 @@ import net.minecraftforge.fluids.ForgeFlowingFluid;
 import net.minecraftforge.fml.*;
 import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.lifecycle.*;
-import net.minecraftforge.fmllegacy.FMLWorldPersistenceHook;
-import net.minecraftforge.fmllegacy.RegistryObject;
-import net.minecraftforge.fmllegacy.WorldPersistenceHooks;
-import net.minecraftforge.fmllegacy.event.lifecycle.FMLModIdMappingEvent;
-import net.minecraftforge.fmllegacy.network.FMLNetworkConstants;
-import net.minecraftforge.fmlserverevents.FMLServerStoppingEvent;
+import net.minecraftforge.registries.*;
+import net.minecraftforge.network.NetworkConstants;
+import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.forge.event.lifecycle.GatherDataEvent;
-import net.minecraftforge.network.VanillaPacketSplitter;
-import net.minecraftforge.registries.DeferredRegister;
+import net.minecraftforge.network.filters.VanillaPacketSplitter;
 import net.minecraftforge.server.command.EnumArgument;
 import net.minecraftforge.server.command.ModIdArgument;
-import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.versions.forge.ForgeVersion;
 import net.minecraftforge.versions.mcp.MCPVersion;
 
@@ -87,7 +86,6 @@ import net.minecraftforge.common.data.ForgeBlockTagsProvider;
 import net.minecraftforge.common.data.ForgeItemTagsProvider;
 import net.minecraftforge.common.data.ForgeLootTableProvider;
 import net.minecraftforge.common.data.ForgeRecipeProvider;
-import net.minecraftforge.common.model.animation.CapabilityAnimation;
 import net.minecraftforge.energy.CapabilityEnergy;
 import net.minecraftforge.event.RegistryEvent;
 import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
@@ -96,12 +94,10 @@ import net.minecraftforge.fml.common.Mod;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Mod("forge")
-public class ForgeMod implements WorldPersistenceHooks.WorldPersistenceHook
+public class ForgeMod
 {
     public static final String VERSION_CHECK_CAT = "version_checking";
     private static final Logger LOGGER = LogManager.getLogger();
@@ -144,12 +140,10 @@ public class ForgeMod implements WorldPersistenceHooks.WorldPersistenceHook
             return uuid.toString();
         });
 
-        LOGGER.debug(FORGEMOD, "Loading Network data for FML net version: {}", FMLNetworkConstants.init());
+        LOGGER.debug(FORGEMOD, "Loading Network data for FML net version: {}", NetworkConstants.init());
         CrashReportCallables.registerCrashCallable("FML", ForgeVersion::getSpec);
         CrashReportCallables.registerCrashCallable("Forge", ()->ForgeVersion.getGroup()+":"+ForgeVersion.getVersion());
 
-        WorldPersistenceHooks.addHook(this);
-        WorldPersistenceHooks.addHook(new FMLWorldPersistenceHook());
         final IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
         modEventBus.addListener(this::registerCapabilities);
         modEventBus.addListener(this::preInit);
@@ -170,6 +164,7 @@ public class ForgeMod implements WorldPersistenceHooks.WorldPersistenceHook
 
         MinecraftForge.EVENT_BUS.addListener(VillagerTradingManager::loadTrades);
         MinecraftForge.EVENT_BUS.register(MinecraftForge.INTERNAL_HANDLER);
+        MinecraftForge.EVENT_BUS.addListener(this::mappingChanged);
         BiomeDictionary.init();
     }
 
@@ -177,7 +172,6 @@ public class ForgeMod implements WorldPersistenceHooks.WorldPersistenceHook
     {
         CapabilityItemHandler.register(event);
         CapabilityFluidHandler.register(event);
-        CapabilityAnimation.register(event);
         CapabilityEnergy.register(event);
     }
 
@@ -199,44 +193,17 @@ public class ForgeMod implements WorldPersistenceHooks.WorldPersistenceHook
     public void loadComplete(FMLLoadCompleteEvent event)
     {
         if (FMLEnvironment.dist == Dist.CLIENT)
-            ForgeHooksClient.registerForgeWorldTypeScreens();
+            ForgeHooksClient.registerForgeWorldPresetScreens();
     }
 
-    public void serverStopping(FMLServerStoppingEvent evt)
+    public void serverStopping(ServerStoppingEvent evt)
     {
         WorldWorkerManager.clear();
     }
 
-    @Override
-    public CompoundTag getDataForWriting(LevelStorageSource.LevelStorageAccess levelSave, WorldData serverInfo)
-    {
-        CompoundTag forgeData = new CompoundTag();
-        CompoundTag dims = new CompoundTag();
-        //TODO Dimensions
-//        DimensionManager.writeRegistry(dims);
-        if (!dims.isEmpty())
-            forgeData.put("dims", dims);
-        return forgeData;
-    }
-
-    @Override
-    public void readData(LevelStorageSource.LevelStorageAccess levelSave, WorldData serverInfo, CompoundTag tag)
-    {
-        //TODO Dimensions
-//        if (tag.contains("dims", 10))
-//            DimensionManager.readRegistry(tag.getCompound("dims"));
-//        DimensionManager.processScheduledDeletions(levelSave);
-    }
-
-    public void mappingChanged(FMLModIdMappingEvent evt)
+    public void mappingChanged(RegistryEvent.IdMappingEvent evt)
     {
         Ingredient.invalidateAll();
-    }
-
-    @Override
-    public String getModId()
-    {
-        return ForgeVersion.MOD_ID;
     }
 
     public void gatherData(GatherDataEvent event)
@@ -314,5 +281,6 @@ public class ForgeMod implements WorldPersistenceHooks.WorldPersistenceHook
     {
         // Ignore the event itself: this is done only not to statically initialize our custom LootConditionType
         Registry.register(Registry.LOOT_CONDITION_TYPE, new ResourceLocation("forge:loot_table_id"), LootTableIdCondition.LOOT_TABLE_ID);
+        Registry.register(Registry.LOOT_CONDITION_TYPE, new ResourceLocation("forge:can_tool_perform_action"), CanToolPerformAction.LOOT_CONDITION_TYPE);
     }
 }

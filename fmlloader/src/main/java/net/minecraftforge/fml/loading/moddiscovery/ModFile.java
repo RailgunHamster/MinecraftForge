@@ -21,8 +21,9 @@ package net.minecraftforge.fml.loading.moddiscovery;
 
 import com.google.common.collect.ImmutableMap;
 import cpw.mods.jarhandling.SecureJar;
-import net.minecraftforge.fml.loading.progress.StartupMessageManager;
 import net.minecraftforge.fml.loading.FMLLoader;
+import net.minecraftforge.fml.loading.LogMarkers;
+import net.minecraftforge.fml.loading.progress.StartupMessageManager;
 import net.minecraftforge.forgespi.language.IModFileInfo;
 import net.minecraftforge.forgespi.language.IModInfo;
 import net.minecraftforge.forgespi.language.IModLanguageProvider;
@@ -46,9 +47,9 @@ import java.util.function.Supplier;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 
-import static net.minecraftforge.fml.loading.LogMarkers.LOADING;
-
 public class ModFile implements IModFile {
+    // Mods either must have a mods.toml or a manifest. We can no longer just put any jar on the classpath.
+    @Deprecated(forRemoval = true, since = "1.18")
     public static final Manifest DEFAULTMANIFEST;
     private static final Logger LOGGER = LogManager.getLogger();
 
@@ -72,7 +73,7 @@ public class ModFile implements IModFile {
     private List<CoreModFile> coreMods;
     private Path accessTransformer;
 
-    public static final Attributes.Name TYPE = new Attributes.Name("FMLModType");
+    static final Attributes.Name TYPE = new Attributes.Name("FMLModType");
     private SecureJar.Status securityStatus;
 
     public ModFile(final SecureJar jar, final IModLocator locator, final ModFileFactory.ModFileInfoParser parser) {
@@ -116,10 +117,10 @@ public class ModFile implements IModFile {
 
     public boolean identifyMods() {
         this.modFileInfo = ModFileParser.readModList(this, this.parser);
-        if (this.modFileInfo == null) return false;
-        LOGGER.debug(LOADING,"Loading mod file {} with languages {}", this.getFilePath(), this.modFileInfo.requiredLanguageLoaders());
+        if (this.modFileInfo == null) return this.getType() != Type.MOD;
+        LOGGER.debug(LogMarkers.LOADING,"Loading mod file {} with languages {}", this.getFilePath(), this.modFileInfo.requiredLanguageLoaders());
         this.coreMods = ModFileParser.getCoreMods(this);
-        this.coreMods.forEach(mi-> LOGGER.debug(LOADING,"Found coremod {}", mi.getPath()));
+        this.coreMods.forEach(mi-> LOGGER.debug(LogMarkers.LOADING,"Found coremod {}", mi.getPath()));
         this.accessTransformer = findResource("META-INF", "accesstransformer.cfg");
         return true;
     }
@@ -139,8 +140,7 @@ public class ModFile implements IModFile {
         locator.scanFile(this, pathConsumer);
     }
 
-    public void setFutureScanResult(CompletableFuture<ModFileScanData> future)
-    {
+    public void setFutureScanResult(CompletableFuture<ModFileScanData> future) {
         this.futureScanResult = future;
     }
 
@@ -168,20 +168,17 @@ public class ModFile implements IModFile {
         StartupMessageManager.modLoaderConsumer().ifPresent(c->c.accept("Completed deep scan of "+this.getFileName()));
     }
 
-    public void setFileProperties(Map<String, Object> fileProperties)
-    {
+    public void setFileProperties(Map<String, Object> fileProperties) {
         this.fileProperties = fileProperties;
     }
 
     @Override
-    public List<IModLanguageProvider> getLoaders()
-    {
+    public List<IModLanguageProvider> getLoaders() {
         return loaders;
     }
 
     @Override
-    public Path findResource(String... path)
-    {
+    public Path findResource(String... path) {
         if (path.length < 1) {
             throw new IllegalArgumentException("Missing path");
         }
@@ -190,7 +187,7 @@ public class ModFile implements IModFile {
 
     public void identifyLanguage() {
         this.loaders = this.modFileInfo.requiredLanguageLoaders().stream()
-                .map(spec->FMLLoader.getLanguageLoadingProvider().findLanguage(this, spec.languageName(), spec.acceptedVersions()))
+                .map(spec-> FMLLoader.getLanguageLoadingProvider().findLanguage(this, spec.languageName(), spec.acceptedVersions()))
                 .toList();
     }
 
@@ -214,17 +211,6 @@ public class ModFile implements IModFile {
         return modFileInfo;
     }
 
-    public static ModFileFactory buildFactory() {
-        return ModFile::new;
-    }
-
-    public static ModFile newFMLInstance(final IModLocator locator, final SecureJar jar) {
-        return (ModFile) ModFileFactory.FACTORY.build(jar, locator, ModFileParser::modsTomlParser);
-    }
-
-    public static ModFile newFMLInstance(final IModLocator locator, final Path... paths) {
-        return (ModFile) ModJarMetadata.buildFile(locator, paths);
-    }
     @Override
     public void setSecurityStatus(final SecureJar.Status status) {
         this.securityStatus = status;

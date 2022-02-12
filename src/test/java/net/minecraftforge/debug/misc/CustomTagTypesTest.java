@@ -1,6 +1,6 @@
 /*
  * Minecraft Forge
- * Copyright (c) 2016-2021.
+ * Copyright (c) 2016-2022.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -19,12 +19,17 @@
 
 package net.minecraftforge.debug.misc;
 
-import com.google.common.collect.Sets;
 import java.util.Set;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
+
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.data.DataGenerator;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
@@ -41,6 +46,7 @@ import net.minecraft.tags.SerializationTags;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.levelgen.feature.StructureFeature;
 import net.minecraftforge.common.ForgeTagHandler;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.data.ExistingFileHelper;
@@ -48,7 +54,7 @@ import net.minecraftforge.common.data.ForgeRegistryTagsProvider;
 import net.minecraftforge.common.util.ReverseTagWrapper;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
-import net.minecraftforge.fmllegacy.RegistryObject;
+import net.minecraftforge.registries.RegistryObject;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.forge.event.lifecycle.GatherDataEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
@@ -68,13 +74,16 @@ public class CustomTagTypesTest
     private static final ResourceLocation customRegistryName = new ResourceLocation(MODID, "custom_type_registry");
     private static final DeferredRegister<Custom> CUSTOMS = DeferredRegister.create(Custom.class, MODID);
     private static final RegistryObject<Custom> CUSTOM = CUSTOMS.register("custom", Custom::new);
+    private static final ResourceKey<? extends Registry<Custom>> CUSTOM_KEY = ResourceKey.createRegistryKey(customRegistryName);
     private static final Supplier<IForgeRegistry<Custom>> CUSTOM_REG = CUSTOMS.makeRegistry(customRegistryName.getPath(),
           () -> new RegistryBuilder<Custom>().tagFolder(MODID + "/custom_types"));
-    private static final Tag.Named<Custom> TESTS = ForgeTagHandler.createOptionalTag(customRegistryName, new ResourceLocation(MODID, "tests"), Sets.newHashSet(CUSTOM));
-    private static final Tag.Named<Item> OPTIONAL_TEST = ItemTags.createOptional(new ResourceLocation(MODID, "optional_test"), Sets.newHashSet(() -> Items.BONE));
+    private static final Tag.Named<Custom> TESTS = ForgeTagHandler.createOptionalTag(customRegistryName, new ResourceLocation(MODID, "tests"), Set.of(CUSTOM));
+    private static final Tag.Named<Item> OPTIONAL_TEST = ItemTags.createOptional(new ResourceLocation(MODID, "optional_test"), Set.of(() -> Items.BONE));
     private static final Tag.Named<Enchantment> FIRE = ForgeTagHandler.createOptionalTag(ForgeRegistries.ENCHANTMENTS, new ResourceLocation(MODID, "fire"));
     private static final Tag.Named<Potion> DAMAGE = ForgeTagHandler.createOptionalTag(ForgeRegistries.POTIONS, new ResourceLocation(MODID, "damage"));
     private static final Tag.Named<BlockEntityType<?>> STORAGE = ForgeTagHandler.createOptionalTag(ForgeRegistries.BLOCK_ENTITIES, new ResourceLocation(MODID, "storage"));
+    private static final Tag.Named<MobEffect> BEACON = ForgeTagHandler.createOptionalTag(ForgeRegistries.MOB_EFFECTS, new ResourceLocation(MODID, "beacon"));
+    private static final Tag.Named<StructureFeature<?>> OVERWORLD_TEMPLE = ForgeTagHandler.createOptionalTag(ForgeRegistries.STRUCTURE_FEATURES, new ResourceLocation(MODID, "overworld_temple"));
 
     public CustomTagTypesTest()
     {
@@ -94,6 +103,8 @@ public class CustomTagTypesTest
             gen.addProvider(new EnchantmentTags(gen, existingFileHelper));
             gen.addProvider(new PotionTags(gen, existingFileHelper));
             gen.addProvider(new BlockEntityTypeTags(gen, existingFileHelper));
+            gen.addProvider(new MobEffectTypeTags(gen, existingFileHelper));
+            gen.addProvider(new StructureFeatureTags(gen, existingFileHelper));
         }
     }
 
@@ -103,10 +114,27 @@ public class CustomTagTypesTest
         if (!itemStack.isEmpty())
         {
             LOGGER.info("{} {} {}", Items.BONE.getTags(), OPTIONAL_TEST.getValues().size(), SerializationTags.getInstance().getOrEmpty(Registry.ITEM_REGISTRY).getTag(new ResourceLocation(MODID, "optional_test")));
+            LOGGER.info("{} {}", CUSTOM.get().getTags(), TESTS.getValues().size());
             EnchantmentHelper.getEnchantments(itemStack).forEach((enchantment, level) -> logTagsIfPresent(enchantment.getTags()));
             if (itemStack.getItem() instanceof PotionItem) logTagsIfPresent(PotionUtils.getPotion(itemStack).getTags());
             BlockEntity blockEntity = event.getWorld().getBlockEntity(event.getPos());
             if (blockEntity != null) logTagsIfPresent(blockEntity.getType().getTags());
+            event.getEntityLiving().getActiveEffects().forEach((mobEffectInstance) -> logTagsIfPresent(mobEffectInstance.getEffect().getTags()));
+        }
+
+        if (event.getPlayer().getLevel() instanceof ServerLevel serverLevel)
+        {
+            OVERWORLD_TEMPLE.getValues().forEach(temple -> {
+                  final BlockPos found = serverLevel.findNearestMapFeature(temple, event.getPos(), 100, false);
+                  if (found != null)
+                  {
+                      LOGGER.info("Found {} at {}", temple.getRegistryName(), found);
+                  }
+                  else
+                  {
+                      LOGGER.info("Could not find {}", temple.getRegistryName());
+                  }
+            });
         }
     }
 
@@ -120,16 +148,11 @@ public class CustomTagTypesTest
 
     public static class Custom extends ForgeRegistryEntry<Custom>
     {
-        private final ReverseTagWrapper<Custom> reverseTags = new ReverseTagWrapper<>(this, () -> SerializationTags.getInstance().getCustomTypeCollection(CUSTOM_REG.get()));
+        private final ReverseTagWrapper<Custom> reverseTags = new ReverseTagWrapper<>(this, () -> SerializationTags.getInstance().getOrEmpty(CUSTOM_KEY));
 
         public Set<ResourceLocation> getTags()
         {
             return reverseTags.getTagNames();
-        }
-
-        public boolean isIn(Tag<Custom> tag)
-        {
-            return tag.contains(this);
         }
     }
 
@@ -203,13 +226,54 @@ public class CustomTagTypesTest
         @Override
         protected void addTags()
         {
-            tag(STORAGE).add(BlockEntityType.BARREL, BlockEntityType.CHEST, BlockEntityType.ENDER_CHEST);
+            tag(STORAGE).add(BlockEntityType.BARREL, BlockEntityType.CHEST, BlockEntityType.ENDER_CHEST, BlockEntityType.TRAPPED_CHEST);
         }
 
         @Override
         public String getName()
         {
-            return "Tile Entity Type Tags";
+            return "Block Entity Type Tags";
+        }
+    }
+
+    public static class MobEffectTypeTags extends ForgeRegistryTagsProvider<MobEffect>
+    {
+        public MobEffectTypeTags(DataGenerator gen, @Nullable ExistingFileHelper existingFileHelper)
+        {
+            super(gen, ForgeRegistries.MOB_EFFECTS, MODID, existingFileHelper);
+        }
+
+        @Override
+        protected void addTags()
+        {
+            tag(BEACON).add(MobEffects.MOVEMENT_SPEED, MobEffects.JUMP, MobEffects.DIG_SPEED, MobEffects.REGENERATION, MobEffects.DAMAGE_RESISTANCE, MobEffects.DAMAGE_BOOST);
+        }
+
+        @Override
+        public String getName()
+        {
+            return "Mob Effect Tags";
+        }
+    }
+
+    public static class StructureFeatureTags extends ForgeRegistryTagsProvider<StructureFeature<?>>
+    {
+
+        public StructureFeatureTags(DataGenerator gen, @Nullable ExistingFileHelper existingFileHelper)
+        {
+            super(gen, ForgeRegistries.STRUCTURE_FEATURES, MODID, existingFileHelper);
+        }
+
+        @Override
+        public String getName()
+        {
+            return "Structure Feature Tags";
+        }
+
+        @Override
+        protected void addTags()
+        {
+            tag(OVERWORLD_TEMPLE).add(StructureFeature.DESERT_PYRAMID, StructureFeature.JUNGLE_TEMPLE);
         }
     }
 }

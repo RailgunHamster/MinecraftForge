@@ -21,17 +21,14 @@ package net.minecraftforge.fml.loading.moddiscovery;
 
 import com.google.common.base.Strings;
 import cpw.mods.modlauncher.api.LamdbaExceptionUtils;
-import cpw.mods.util.LambdaExceptionUtils;
+import net.minecraftforge.fml.loading.LogMarkers;
 import net.minecraftforge.fml.loading.StringUtils;
 import net.minecraftforge.forgespi.language.IConfigurable;
 import net.minecraftforge.forgespi.language.IModFileInfo;
 import net.minecraftforge.forgespi.language.IModInfo;
 import net.minecraftforge.forgespi.language.MavenVersionAdapter;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.maven.artifact.versioning.VersionRange;
-
 import javax.security.auth.x500.X500Principal;
 import java.net.URL;
 import java.security.CodeSigner;
@@ -44,11 +41,8 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.*;
-import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import static net.minecraftforge.fml.loading.LogMarkers.LOADING;
 
 public class ModFileInfo implements IModFileInfo, IConfigurable
 {
@@ -88,7 +82,7 @@ public class ModFileInfo implements IModFileInfo, IConfigurable
         this.mods = modConfigs.stream()
                 .map(mi-> new ModInfo(this, mi))
                 .collect(Collectors.toList());
-        LOGGER.debug(LOADING, "Found valid mod file {} with {} mods - versions {}",
+        LOGGER.debug(LogMarkers.LOADING, "Found valid mod file {} with {} mods - versions {}",
                 this.modFile::getFileName,
                 () -> this.mods.stream().map(IModInfo::getModId).collect(Collectors.joining(",", "{", "}")),
                 () -> this.mods.stream().map(IModInfo::getVersion).map(Objects::toString).collect(Collectors.joining(",", "{", "}")));

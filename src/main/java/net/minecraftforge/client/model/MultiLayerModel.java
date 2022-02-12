@@ -39,6 +39,7 @@ import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.core.Direction;
 import net.minecraft.util.GsonHelper;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.client.ForgeRenderTypes;
 import net.minecraftforge.client.MinecraftForgeClient;
 
 import net.minecraftforge.client.model.data.IDynamicBakedModel;
@@ -149,7 +150,7 @@ public final class MultiLayerModel implements IModelGeometry<MultiLayerModel>
         @Override
         public List<BakedQuad> getQuads(@Nullable BlockState state, @Nullable Direction side, @Nonnull Random rand, @Nonnull IModelData extraData)
         {
-            RenderType layer = MinecraftForgeClient.getRenderLayer();
+            RenderType layer = MinecraftForgeClient.getRenderType();
             if (layer == null)
             {
                 ImmutableList.Builder<BakedQuad> builder = ImmutableList.builder();
@@ -175,7 +176,7 @@ public final class MultiLayerModel implements IModelGeometry<MultiLayerModel>
         }
 
         @Override
-        public boolean isAmbientOcclusion(BlockState state)
+        public boolean useAmbientOcclusion(BlockState state)
         {
             return ambientOcclusion;
         }
@@ -234,14 +235,13 @@ public final class MultiLayerModel implements IModelGeometry<MultiLayerModel>
             return itemLayers;
         }
 
-        public static BiMap<RenderType, RenderType> ITEM_RENDER_TYPE_MAPPING = HashBiMap.create();
-        // TODO ForgeRenderTypes
-/*        static {
+        public static final BiMap<RenderType, RenderType> ITEM_RENDER_TYPE_MAPPING = HashBiMap.create();
+        static {
             ITEM_RENDER_TYPE_MAPPING.put(RenderType.solid(), ForgeRenderTypes.ITEM_LAYERED_SOLID.get());
             ITEM_RENDER_TYPE_MAPPING.put(RenderType.cutout(), ForgeRenderTypes.ITEM_LAYERED_CUTOUT.get());
             ITEM_RENDER_TYPE_MAPPING.put(RenderType.cutoutMipped(), ForgeRenderTypes.ITEM_LAYERED_CUTOUT_MIPPED.get());
             ITEM_RENDER_TYPE_MAPPING.put(RenderType.translucent(), ForgeRenderTypes.ITEM_LAYERED_TRANSLUCENT.get());
-        }*/
+        }
     }
 
     public static final class Loader implements IModelLoader<MultiLayerModel>
